@@ -1,0 +1,31 @@
+#version 450
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+layout(set=0,binding=0) buffer Data { float data[]; } InOut;
+layout(push_constant) uniform PC { int iters; } pc;
+
+void main(){
+  uint idx = gl_GlobalInvocationID.x;
+  if(idx >= InOut.data.length()) return;
+  float v = InOut.data[idx];
+  // 64 regs
+  float r[64];
+  // initialize without dynamic indexing causing local memory: manually unroll
+  r[0]=v*1.001; r[1]=v*1.002; r[2]=v*1.003; r[3]=v*1.004; r[4]=v*1.005; r[5]=v*1.006; r[6]=v*1.007; r[7]=v*1.008;
+  r[8]=v*1.009; r[9]=v*1.010; r[10]=v*1.011; r[11]=v*1.012; r[12]=v*1.013; r[13]=v*1.014; r[14]=v*1.015; r[15]=v*1.016;
+  r[16]=v*1.017; r[17]=v*1.018; r[18]=v*1.019; r[19]=v*1.020; r[20]=v*1.021; r[21]=v*1.022; r[22]=v*1.023; r[23]=v*1.024;
+  r[24]=v*1.025; r[25]=v*1.026; r[26]=v*1.027; r[27]=v*1.028; r[28]=v*1.029; r[29]=v*1.030; r[30]=v*1.031; r[31]=v*1.032;
+  r[32]=v*1.033; r[33]=v*1.034; r[34]=v*1.035; r[35]=v*1.036; r[36]=v*1.037; r[37]=v*1.038; r[38]=v*1.039; r[39]=v*1.040;
+  r[40]=v*1.041; r[41]=v*1.042; r[42]=v*1.043; r[43]=v*1.044; r[44]=v*1.045; r[45]=v*1.046; r[46]=v*1.047; r[47]=v*1.048;
+  r[48]=v*1.049; r[49]=v*1.050; r[50]=v*1.051; r[51]=v*1.052; r[52]=v*1.053; r[53]=v*1.054; r[54]=v*1.055; r[55]=v*1.056;
+  r[56]=v*1.057; r[57]=v*1.058; r[58]=v*1.059; r[59]=v*1.060; r[60]=v*1.061; r[61]=v*1.062; r[62]=v*1.063; r[63]=v*1.064;
+  for(int i=0;i<pc.iters;i++){
+    v = fma(v, 1.1, 2.2);
+    v = fma(v, 2.2, 3.3);
+    v = fma(v, 3.3, 4.4);
+    v = fma(v, 4.4, 5.5);
+  }
+  // sum subset to avoid huge code
+  float s = 0.0;
+  for(int j=0;j<64;j++){ s += r[j]; }
+  InOut.data[idx] = v + s * 0.00001;
+}
