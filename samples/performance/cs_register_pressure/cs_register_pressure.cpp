@@ -66,14 +66,18 @@ void CS_register_pressure::create_compute_resources()
     auto &r16_module  = request_module("cs_register_pressure/r16.comp.spv",  "cs_register_pressure/r16.comp");
     auto &r32_module  = request_module("cs_register_pressure/r32.comp.spv",  "cs_register_pressure/r32.comp");
     auto &r64_module  = request_module("cs_register_pressure/r64.comp.spv",  "cs_register_pressure/r64.comp");
+    auto &r96_module  = request_module("cs_register_pressure/r96.comp.spv",  "cs_register_pressure/r96.comp");
     auto &r128_module = request_module("cs_register_pressure/r128.comp.spv", "cs_register_pressure/r128.comp");
+    auto &r192_module = request_module("cs_register_pressure/r192.comp.spv", "cs_register_pressure/r192.comp");
     auto &r256_module = request_module("cs_register_pressure/r256.comp.spv", "cs_register_pressure/r256.comp");
 
     layout_r8   = &get_device().get_resource_cache().request_pipeline_layout({&r8_module});
     layout_r16  = &get_device().get_resource_cache().request_pipeline_layout({&r16_module});
     layout_r32  = &get_device().get_resource_cache().request_pipeline_layout({&r32_module});
     layout_r64  = &get_device().get_resource_cache().request_pipeline_layout({&r64_module});
+    layout_r96  = &get_device().get_resource_cache().request_pipeline_layout({&r96_module});
     layout_r128 = &get_device().get_resource_cache().request_pipeline_layout({&r128_module});
+    layout_r192 = &get_device().get_resource_cache().request_pipeline_layout({&r192_module});
     layout_r256 = &get_device().get_resource_cache().request_pipeline_layout({&r256_module});
 
 #ifdef TRACY_ENABLE
@@ -140,16 +144,16 @@ void CS_register_pressure::draw_gui()
 {
     get_gui().show_options_window([&]() {
         ImGui::Checkbox("Enable Compute", &enable_compute);
-        ImGui::SliderInt("Iterations", &iterations, 128, 20000);
+        ImGui::SliderInt("Iterations", &iterations, 1, 100);
         int level = static_cast<int>(current_level);
-        const char *labels[] = {"R8","R16","R32","R64","R128","R256"};
+        const char *labels[] = {"R8","R16","R32","R64","R96","R128","R192","R256"};
         if (ImGui::Combo("Pressure", &level, labels, IM_ARRAYSIZE(labels)))
         {
             current_level = static_cast<PressureLevel>(level);
         }
 
         int group_size_idx = static_cast<int>(current_group_size);
-        const char *group_labels[] = {"32", "64", "128", "256", "512"};
+        const char *group_labels[] = {"32", "64", "96", "128", "192", "256", "384", "512", "1024"};
         if (ImGui::Combo("Group Size", &group_size_idx, group_labels, IM_ARRAYSIZE(group_labels)))
         {
             current_group_size = static_cast<GroupSize>(group_size_idx);
@@ -161,13 +165,21 @@ void CS_register_pressure::draw_gui()
         {
             case GroupSize::L32: local_size = 32; break;
             case GroupSize::L64: local_size = 64; break;
+            case GroupSize::L96: local_size = 96; break;
             case GroupSize::L128: local_size = 128; break;
+            case GroupSize::L192: local_size = 192; break;
             case GroupSize::L256: local_size = 256; break;
+            case GroupSize::L384: local_size = 384; break;
             case GroupSize::L512: local_size = 512; break;
+            case GroupSize::L1024: local_size = 1024; break;
         }
         uint32_t groups = static_cast<uint32_t>((storage_buffer->get_size() / sizeof(float) + local_size - 1) / local_size);
         uint64_t total_threads = static_cast<uint64_t>(groups) * static_cast<uint64_t>(local_size);
         ImGui::Text("CS Threads: %llu (groups=%u, local=%u)", static_cast<unsigned long long>(total_threads), groups, local_size);
+
+        // 768 ops per iteration (approx) based on shader logic
+        uint64_t total_alu_ops = static_cast<uint64_t>(iterations) * 768;
+        ImGui::Text("Per Thread Total ALU Ops: %llu", static_cast<unsigned long long>(total_alu_ops));
 
         if (query_pool)
         {
@@ -252,7 +264,9 @@ void CS_register_pressure::dispatch_compute(vkb::core::CommandBufferC &command_b
         case PressureLevel::R16: layout = layout_r16; break;
         case PressureLevel::R32: layout = layout_r32; break;
         case PressureLevel::R64: layout = layout_r64; break;
+        case PressureLevel::R96: layout = layout_r96; break;
         case PressureLevel::R128: layout = layout_r128; break;
+        case PressureLevel::R192: layout = layout_r192; break;
         case PressureLevel::R256: layout = layout_r256; break;
     }
     command_buffer.bind_pipeline_layout(*layout);
@@ -265,9 +279,13 @@ void CS_register_pressure::dispatch_compute(vkb::core::CommandBufferC &command_b
     {
         case GroupSize::L32: local_size = 32; break;
         case GroupSize::L64: local_size = 64; break;
+        case GroupSize::L96: local_size = 96; break;
         case GroupSize::L128: local_size = 128; break;
+        case GroupSize::L192: local_size = 192; break;
         case GroupSize::L256: local_size = 256; break;
+        case GroupSize::L384: local_size = 384; break;
         case GroupSize::L512: local_size = 512; break;
+        case GroupSize::L1024: local_size = 1024; break;
     }
 
     command_buffer.set_specialization_constant(0, local_size);
@@ -307,7 +325,15 @@ void CS_register_pressure::render(vkb::core::CommandBufferC &command_buffer)
     dispatch_compute(command_buffer);
 
     // Throttle to avoid compute workload explosion during measurement
-    get_device().wait_idle();
+    auto &frames = get_render_context().get_render_frames();
+    if (!frames.empty())
+    {
+        uint32_t active_index = get_render_context().get_active_frame_index();
+        uint32_t prev_index   = (active_index == 0) ? static_cast<uint32_t>(frames.size()) - 1 : active_index - 1;
+
+        // Wait for the previous frame to complete
+        frames[prev_index]->get_fence_pool().wait();
+    }
 }
 
 std::unique_ptr<vkb::VulkanSampleC> create_cs_register_pressure()

@@ -43,10 +43,10 @@ class CS_register_pressure : public vkb::VulkanSampleC
     void create_compute_resources();
     void dispatch_compute(vkb::core::CommandBufferC &command_buffer);
 
-    enum class PressureLevel { R8, R16, R32, R64, R128, R256 };
+    enum class PressureLevel { R8, R16, R32, R64, R96, R128, R192, R256 };
     PressureLevel current_level{PressureLevel::R8};
 
-    enum class GroupSize { L32, L64, L128, L256, L512 };
+    enum class GroupSize { L32, L64, L96, L128, L192, L256, L384, L512, L1024 };
     GroupSize current_group_size{GroupSize::L64};
 
     std::unique_ptr<vkb::core::BufferC> storage_buffer; // workload buffer
@@ -59,7 +59,9 @@ class CS_register_pressure : public vkb::VulkanSampleC
     vkb::PipelineLayout *layout_r16{nullptr};
     vkb::PipelineLayout *layout_r32{nullptr};
     vkb::PipelineLayout *layout_r64{nullptr};
+    vkb::PipelineLayout *layout_r96{nullptr};
     vkb::PipelineLayout *layout_r128{nullptr};
+    vkb::PipelineLayout *layout_r192{nullptr};
     vkb::PipelineLayout *layout_r256{nullptr};
 
 #ifdef TRACY_ENABLE

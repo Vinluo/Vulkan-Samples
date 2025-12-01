@@ -1,22 +1,32 @@
 #version 450
 layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
-layout(set=0,binding=0) buffer Data { float data[]; } InOut;
-layout(push_constant) uniform PC { int iters; } pc;
+layout(set=0,binding=0) buffer Data {
+    float data[];
+} InOut;
+layout(push_constant) uniform PC {
+    int iters;
+} pc;
 
-void main(){
-  uint idx = gl_GlobalInvocationID.x;
-  if(idx >= InOut.data.length()) return;
-  float v = InOut.data[idx];
-  // 256 regs: four arrays of 64 (compiler may spill; intended to push pressure)
-  float r0[64]; float r1[64]; float r2[64]; float r3[64];
-  for(int j=0;j<64;j++){ r0[j]=v*(1.001+j*0.001); r1[j]=v*(1.101+j*0.001); r2[j]=v*(1.201+j*0.001); r3[j]=v*(1.301+j*0.001); }
-  for(int i=0;i<pc.iters;i++){
-    v = fma(v, 1.1, 2.2);
-    v = fma(v, 2.2, 3.3);
-    v = fma(v, 3.3, 4.4);
-    v = fma(v, 4.4, 5.5);
-  }
-  float s = 0.0;
-  for(int j=0;j<64;j++){ s += r0[j] + r1[j] + r2[j] + r3[j]; }
-  InOut.data[idx] = v + s * 0.00001;
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx >= InOut.data.length()) return;
+    float v = InOut.data[idx];
+    // 256 regs: four arrays of 64 (compiler may spill; intended to push pressure)
+    float r0[64]; float r1[64]; float r2[64]; float r3[64];
+    for(int j=0;j<64;j++) {
+        r0[j]=v*(1.001+j*0.001); r1[j]=v*(1.101+j*0.001); r2[j]=v*(1.201+j*0.001); r3[j]=v*(1.301+j*0.001);
+    }
+    for(int i=0;i<pc.iters;i++) {
+        for(int j=0;j<64;j++) {
+            r0[j] = fma(r0[j], 1.0001, 0.0001);
+            r1[j] = fma(r1[j], 1.0001, 0.0001);
+            r2[j] = fma(r2[j], 1.0001, 0.0001);
+            r3[j] = fma(r3[j], 1.0001, 0.0001);
+        }
+    }
+    float s = 0.0;
+    for(int j=0;j<64;j++) {
+        s += r0[j] + r1[j] + r2[j] + r3[j];
+    }
+    InOut.data[idx] = v + s * 0.00001;
 }

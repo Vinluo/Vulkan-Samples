@@ -38,5 +38,7 @@ add_sample(
         "cs_register_pressure/r16.comp"
         "cs_register_pressure/r32.comp"
         "cs_register_pressure/r64.comp"
+        "cs_register_pressure/r96.comp"
         "cs_register_pressure/r128.comp"
+        "cs_register_pressure/r192.comp"
         "cs_register_pressure/r256.comp")

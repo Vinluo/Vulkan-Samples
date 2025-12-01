@@ -1,0 +1,38 @@
+#version 450
+layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+layout(set=0,binding=0) buffer Data {
+    float data[];
+} InOut;
+layout(push_constant) uniform PC {
+    int iters;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx >= InOut.data.length()) return;
+    float v = InOut.data[idx];
+    // 192 regs via four 48-entry arrays
+    float regs0[48];
+    float regs1[48];
+    float regs2[48];
+    float regs3[48];
+    for(int j=0;j<48;j++) {
+        regs0[j] = v * (1.001 + j * 0.001);
+        regs1[j] = v * (1.151 + j * 0.001);
+        regs2[j] = v * (1.301 + j * 0.001);
+        regs3[j] = v * (1.451 + j * 0.001);
+    }
+    for(int i=0;i<pc.iters;i++) {
+        for(int j=0;j<48;j++) {
+            regs0[j] = fma(regs0[j], 1.0001, 0.0001);
+            regs1[j] = fma(regs1[j], 1.0001, 0.0001);
+            regs2[j] = fma(regs2[j], 1.0001, 0.0001);
+            regs3[j] = fma(regs3[j], 1.0001, 0.0001);
+        }
+    }
+    float s = 0.0;
+    for(int j=0;j<48;j++) {
+        s += regs0[j] + regs1[j] + regs2[j] + regs3[j];
+    }
+    InOut.data[idx] = v + s * 0.00001;
+}

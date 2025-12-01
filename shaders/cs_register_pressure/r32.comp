@@ -1,27 +1,37 @@
 #version 450
 layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
-layout(set=0,binding=0) buffer Data { float data[]; } InOut;
-layout(push_constant) uniform PC { int iters; } pc;
+layout(set=0,binding=0) buffer Data {
+    float data[];
+} InOut;
+layout(push_constant) uniform PC {
+    int iters;
+} pc;
 
-void main(){
-  uint idx = gl_GlobalInvocationID.x;
-  if(idx >= InOut.data.length()) return;
-  float v = InOut.data[idx];
-  // 32 regs
-  float r0=v*1.001, r1=v*1.002, r2=v*1.003, r3=v*1.004;
-  float r4=v*1.005, r5=v*1.006, r6=v*1.007, r7=v*1.008;
-  float r8=v*1.009, r9=v*1.010, r10=v*1.011, r11=v*1.012;
-  float r12=v*1.013, r13=v*1.014, r14=v*1.015, r15=v*1.016;
-  float r16=v*1.017, r17=v*1.018, r18=v*1.019, r19=v*1.020;
-  float r20=v*1.021, r21=v*1.022, r22=v*1.023, r23=v*1.024;
-  float r24=v*1.025, r25=v*1.026, r26=v*1.027, r27=v*1.028;
-  float r28=v*1.029, r29=v*1.030, r30=v*1.031, r31=v*1.032;
-  for(int i=0;i<pc.iters;i++){
-    v = fma(v, 1.1, 2.2);
-    v = fma(v, 2.2, 3.3);
-    v = fma(v, 3.3, 4.4);
-    v = fma(v, 4.4, 5.5);
-  }
-  float finalResult = v + (r0+r1+r2+r3+r4+r5+r6+r7+r8+r9+r10+r11+r12+r13+r14+r15+r16+r17+r18+r19+r20+r21+r22+r23+r24+r25+r26+r27+r28+r29+r30+r31)*0.0001;
-  InOut.data[idx] = finalResult;
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx >= InOut.data.length()) return;
+    float v = InOut.data[idx];
+    // 32 regs
+    float r0=v*1.001, r1=v*1.002, r2=v*1.003, r3=v*1.004;
+    float r4=v*1.005, r5=v*1.006, r6=v*1.007, r7=v*1.008;
+    float r8=v*1.009, r9=v*1.010, r10=v*1.011, r11=v*1.012;
+    float r12=v*1.013, r13=v*1.014, r14=v*1.015, r15=v*1.016;
+    float r16=v*1.017, r17=v*1.018, r18=v*1.019, r19=v*1.020;
+    float r20=v*1.021, r21=v*1.022, r22=v*1.023, r23=v*1.024;
+    float r24=v*1.025, r25=v*1.026, r26=v*1.027, r27=v*1.028;
+    float r28=v*1.029, r29=v*1.030, r30=v*1.031, r31=v*1.032;
+    for(int i=0;i<pc.iters;i++) {
+        for(int k=0; k<24; k++) {
+            r0 = fma(r0, 1.0001, 0.0001); r1 = fma(r1, 1.0001, 0.0001); r2 = fma(r2, 1.0001, 0.0001); r3 = fma(r3, 1.0001, 0.0001);
+            r4 = fma(r4, 1.0001, 0.0001); r5 = fma(r5, 1.0001, 0.0001); r6 = fma(r6, 1.0001, 0.0001); r7 = fma(r7, 1.0001, 0.0001);
+            r8 = fma(r8, 1.0001, 0.0001); r9 = fma(r9, 1.0001, 0.0001); r10 = fma(r10, 1.0001, 0.0001); r11 = fma(r11, 1.0001, 0.0001);
+            r12 = fma(r12, 1.0001, 0.0001); r13 = fma(r13, 1.0001, 0.0001); r14 = fma(r14, 1.0001, 0.0001); r15 = fma(r15, 1.0001, 0.0001);
+            r16 = fma(r16, 1.0001, 0.0001); r17 = fma(r17, 1.0001, 0.0001); r18 = fma(r18, 1.0001, 0.0001); r19 = fma(r19, 1.0001, 0.0001);
+            r20 = fma(r20, 1.0001, 0.0001); r21 = fma(r21, 1.0001, 0.0001); r22 = fma(r22, 1.0001, 0.0001); r23 = fma(r23, 1.0001, 0.0001);
+            r24 = fma(r24, 1.0001, 0.0001); r25 = fma(r25, 1.0001, 0.0001); r26 = fma(r26, 1.0001, 0.0001); r27 = fma(r27, 1.0001, 0.0001);
+            r28 = fma(r28, 1.0001, 0.0001); r29 = fma(r29, 1.0001, 0.0001); r30 = fma(r30, 1.0001, 0.0001); r31 = fma(r31, 1.0001, 0.0001);
+        }
+    }
+    float finalResult = v + (r0+r1+r2+r3+r4+r5+r6+r7+r8+r9+r10+r11+r12+r13+r14+r15+r16+r17+r18+r19+r20+r21+r22+r23+r24+r25+r26+r27+r28+r29+r30+r31)*0.0001;
+    InOut.data[idx] = finalResult;
 }
