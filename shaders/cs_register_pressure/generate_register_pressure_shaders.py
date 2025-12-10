@@ -1,27 +1,34 @@
 import os
 
-output_dir = r""
+output_dir = r"."
 # Ensure directory exists
 os.makedirs(output_dir, exist_ok=True)
 
-def generate_shader(reg_count):
-    filename = f"r{reg_count}.comp"
+def generate_shader(target_reg_count):
+    filename = f"r{target_reg_count}.comp"
+    
+    # Reserve some registers for system use (index, buffer pointers, loop counters, etc.)
+    # Based on observation: r16 (11 vars) used 19 regs -> 8 overhead.
+    # r32 (32 vars) used 37 regs -> 5 overhead.
+    # We choose 8 to be safe and ensure we stay under the pressure limits.
+    reserved_regs = 8
+    num_vars = target_reg_count - reserved_regs
+    if num_vars < 4:
+        num_vars = 4 # Minimum 4 variables to ensure some work is done
     
     # Target ALU ops per iter = 768
-    # repeats * reg_count = 768
-    # repeats = 768 / reg_count
-    repeats = int(768 / reg_count)
+    # repeats * num_vars = 768
+    repeats = int(768 / num_vars)
     if repeats < 1:
         repeats = 1
         
-    # Strategy: Split into arrays of max size 64 to avoid potential compiler issues with huge single arrays
-    # although unrolled access usually handles it, splitting is safer and matches previous style.
+    # Strategy: Split into arrays of max size 64
     arrays_config = []
-    remaining = reg_count
+    remaining = num_vars
     idx = 0
     while remaining > 0:
         size = min(remaining, 64)
-        arrays_config.append((f"r{idx}", size, 1.0 + idx * 0.1)) # slightly different start vals
+        arrays_config.append((f"r{idx}", size, 1.0 + idx * 0.1)) 
         remaining -= size
         idx += 1
 
@@ -77,11 +84,11 @@ def generate_shader(reg_count):
 
     with open(os.path.join(output_dir, filename), "w") as f:
         f.write("\n".join(code))
-    print(f"Generated {filename} (Regs: {reg_count}, Repeats: {repeats}, Total Ops: {reg_count * repeats})")
+    print(f"Generated {filename} (Target: {target_reg_count}, Vars: {num_vars}, Repeats: {repeats}, Total Ops: {num_vars * repeats})")
 
 # Generate for a range of register counts
 # Including r16, r32 to ensure baseline consistency
-register_counts = [16, 32, 64, 96, 128, 192, 256]
+register_counts = [8,16, 32, 64, 96, 128, 192, 256]
 
 for count in register_counts:
     generate_shader(count)
