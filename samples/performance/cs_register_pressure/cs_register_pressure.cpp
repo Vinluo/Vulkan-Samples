@@ -17,7 +17,9 @@
 
 #include "cs_register_pressure.h"
 
+#include "common/helpers.h"
 #include "common/vk_common.h"
+#include "core/command_pool.h"
 #include "gltf_loader.h"
 #include "gui.h"
 #include "filesystem/legacy.h"
@@ -97,7 +99,11 @@ void CS_register_pressure::create_compute_resources()
     {
         VkQueryPoolCreateInfo query_pool_info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        query_pool_info.queryCount = 2;
+        
+        // Allocate queries for each frame
+        uint32_t frame_count = static_cast<uint32_t>(get_render_context().get_render_frames().size());
+        query_pool_info.queryCount = frame_count * 2;
+        
         try
         {
             query_pool = std::make_unique<vkb::QueryPool>(get_device(), query_pool_info);
@@ -112,6 +118,53 @@ void CS_register_pressure::create_compute_resources()
     {
         LOGW("Timestamp queries not supported on this device");
     }
+
+    // Pre-compile all pipelines to avoid runtime stutter
+    std::vector<vkb::PipelineLayout *> layouts = {layout_r8, layout_r16, layout_r32, layout_r64, layout_r96, layout_r128, layout_r192, layout_r256};
+    std::vector<uint32_t>              sizes   = {32, 64, 96, 128, 192, 256, 384, 512, 1024};
+
+    // Create a temporary command buffer to force descriptor set creation and pipeline compilation
+    auto &queue = get_device().get_queue_by_flags(VK_QUEUE_COMPUTE_BIT, 0);
+    
+    // Use the first render frame for the temporary command pool to satisfy assertion
+    auto &render_frame = get_render_context().get_render_frames()[0];
+    vkb::core::CommandPoolC temp_pool(get_device(), queue.get_family_index(), render_frame.get());
+    vkb::core::CommandBufferC temp_cmd(temp_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+    temp_cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    // Bind buffer once (it's the same for all)
+    vkb::core::BufferC &buf = *storage_buffer;
+    temp_cmd.bind_buffer(buf, 0, buf.get_size(), 0, 0, 0);
+
+    for (auto *layout : layouts)
+    {
+        // Bind layout
+        temp_cmd.bind_pipeline_layout(*layout);
+
+        for (auto size : sizes)
+        {
+            vkb::PipelineState state;
+            state.set_pipeline_layout(*layout);
+            state.set_specialization_constant(0, vkb::to_bytes(size));
+            get_device().get_resource_cache().request_compute_pipeline(state);
+        }
+
+        // Force descriptor set creation for this layout by doing a dummy dispatch
+        // We use a fixed group size (e.g. 64) just to trigger the descriptor set update logic
+        temp_cmd.set_specialization_constant(0, (uint32_t)64);
+        temp_cmd.dispatch(1, 1, 1);
+    }
+
+    temp_cmd.end();
+
+    // Submit the dummy work to force driver compilation/upload
+    // We don't need to wait for it, but it ensures the driver sees the pipelines
+    auto &fence_pool = get_device().get_fence_pool();
+    auto fence = fence_pool.request_fence();
+    queue.submit(temp_cmd, fence);
+    fence_pool.wait();
+    fence_pool.reset();
 }
 
 bool CS_register_pressure::prepare(const vkb::ApplicationOptions &options)
@@ -183,33 +236,8 @@ void CS_register_pressure::draw_gui()
 
         if (query_pool)
         {
-            uint64_t timestamps[2] = {0};
-            // Try to read without waiting; if not ready, show the message
-            VkResult result = query_pool->get_results(0, 2, sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
-            if (result == VK_SUCCESS)
-            {
-                float timestamp_period = get_device().get_gpu().get_properties().limits.timestampPeriod;
-                compute_duration_ms = (timestamps[1] - timestamps[0]) * timestamp_period / 1000000.0f;
-
-                compute_history.push_back(compute_duration_ms);
-                if (compute_history.size() > 100)
-                {
-                    compute_history.erase(compute_history.begin());
-                }
-
-#ifdef TRACY_ENABLE
-                TracyPlot("Compute Duration", compute_duration_ms);
-#endif
-                ImGui::Text("Compute Time: %.3f ms", compute_duration_ms);
-            }
-            else if (result == VK_NOT_READY)
-            {
-                ImGui::TextColored(ImVec4(1, 1, 0, 1), "Query Not Ready (Waiting for GPU)");
-            }
-            else
-            {
-                ImGui::TextColored(ImVec4(1, 0, 0, 1), "Query error: %d", result);
-            }
+            // Always show the last valid duration
+            ImGui::Text("Compute Time: %.3f ms", compute_duration_ms);
 
             if (!compute_history.empty())
             {
@@ -296,10 +324,13 @@ void CS_register_pressure::dispatch_compute(vkb::core::CommandBufferC &command_b
     TracyVkZone(tracy_context, command_buffer.get_handle(), "CS Dispatch");
 #endif
 
+    uint32_t active_frame_index = get_render_context().get_active_frame_index();
+    uint32_t query_index = active_frame_index * 2;
+
     if (query_pool)
     {
         // Use TOP_OF_PIPE before dispatch for reliable timestamp latching
-        command_buffer.write_timestamp(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, *query_pool, 0);
+        command_buffer.write_timestamp(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, *query_pool, query_index);
     }
 
     command_buffer.dispatch(groups, 1, 1);
@@ -307,7 +338,7 @@ void CS_register_pressure::dispatch_compute(vkb::core::CommandBufferC &command_b
     if (query_pool)
     {
         // Use BOTTOM_OF_PIPE after dispatch for reliable timestamp latching
-        command_buffer.write_timestamp(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, *query_pool, 1);
+        command_buffer.write_timestamp(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, *query_pool, query_index + 1);
     }
 }
 
@@ -316,24 +347,46 @@ void CS_register_pressure::render(vkb::core::CommandBufferC &command_buffer)
     // Reset queries at the start of the frame so we write fresh timestamps
     if (query_pool)
     {
-        command_buffer.reset_query_pool(*query_pool, 0, 2);
-    }
+        uint32_t active_frame_index = get_render_context().get_active_frame_index();
+        uint32_t query_index = active_frame_index * 2;
 
-    get_render_pipeline().draw(command_buffer, get_render_context().get_active_frame().get_render_target());
+        // Read results from the previous execution of this frame
+        // This data is guaranteed to be ready because we waited for this frame's fence in begin_frame
+        uint64_t timestamps[2] = {0};
+        VkResult result = query_pool->get_results(query_index, 2, sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+        
+        if (result == VK_SUCCESS)
+        {
+            float timestamp_period = get_device().get_gpu().get_properties().limits.timestampPeriod;
+            compute_duration_ms = (timestamps[1] - timestamps[0]) * timestamp_period / 1000000.0f;
+
+            compute_history.push_back(compute_duration_ms);
+            if (compute_history.size() > 100)
+            {
+                compute_history.erase(compute_history.begin());
+            }
+
+#ifdef TRACY_ENABLE
+            TracyPlot("Compute Duration", compute_duration_ms);
+#endif
+        }
+
+        command_buffer.reset_query_pool(*query_pool, query_index, 2);
+    }
 
     // Record compute and timestamps in the same command buffer
     dispatch_compute(command_buffer);
 
-    // Throttle to avoid compute workload explosion during measurement
-    auto &frames = get_render_context().get_render_frames();
-    if (!frames.empty())
-    {
-        uint32_t active_index = get_render_context().get_active_frame_index();
-        uint32_t prev_index   = (active_index == 0) ? static_cast<uint32_t>(frames.size()) - 1 : active_index - 1;
+    // Synchronize Compute and Graphics
+    vkCmdPipelineBarrier(command_buffer.get_handle(),
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                         0,
+                         0, nullptr,
+                         0, nullptr,
+                         0, nullptr);
 
-        // Wait for the previous frame to complete
-        frames[prev_index]->get_fence_pool().wait();
-    }
+    get_render_pipeline().draw(command_buffer, get_render_context().get_active_frame().get_render_target());
 }
 
 std::unique_ptr<vkb::VulkanSampleC> create_cs_register_pressure()
