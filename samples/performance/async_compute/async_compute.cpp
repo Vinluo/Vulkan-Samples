@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025, Arm Limited and Contributors
+/* Copyright (c) 2021-2026, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -42,7 +42,7 @@ void AsyncComputeSample::request_gpu_features(vkb::core::PhysicalDeviceC &gpu)
 {
 #ifdef VKB_ENABLE_PORTABILITY
 	// Since sampler_info.compareEnable = VK_TRUE, must enable the mutableComparisonSamplers feature of VK_KHR_portability_subset
-	REQUEST_REQUIRED_FEATURE(gpu, VkPhysicalDevicePortabilitySubsetFeaturesKHR, mutableComparisonSamplers);
+	REQUEST_OPTIONAL_FEATURE(gpu, VkPhysicalDevicePortabilitySubsetFeaturesKHR, mutableComparisonSamplers);
 #endif
 }
 
@@ -828,23 +828,25 @@ std::unique_ptr<vkb::VulkanSampleC> create_async_compute()
 AsyncComputeSample::DepthMapSubpass::DepthMapSubpass(vkb::rendering::RenderContextC &render_context,
                                                      vkb::ShaderSource &&vertex_shader, vkb::ShaderSource &&fragment_shader,
                                                      vkb::sg::Scene &scene, vkb::sg::Camera &camera) :
-    vkb::ForwardSubpass(render_context, std::move(vertex_shader), std::move(fragment_shader), scene, camera)
+    vkb::rendering::subpasses::ForwardSubpassC(render_context, std::move(vertex_shader), std::move(fragment_shader), scene, camera)
 {
 	// PCF, so need depth bias to avoid (most) shadow acne.
-	base_rasterization_state.depth_bias_enable = VK_TRUE;
+	auto rasterization_state              = get_rasterization_state();
+	rasterization_state.depth_bias_enable = true;
+	set_rasterization_state(rasterization_state);
 }
 
 void AsyncComputeSample::DepthMapSubpass::draw(vkb::core::CommandBufferC &command_buffer)
 {
 	// Negative bias since we're using inverted Z.
 	command_buffer.set_depth_bias(-1.0f, 0.0f, -2.0f);
-	vkb::ForwardSubpass::draw(command_buffer);
+	vkb::rendering::subpasses::ForwardSubpassC::draw(command_buffer);
 }
 
 AsyncComputeSample::ShadowMapForwardSubpass::ShadowMapForwardSubpass(vkb::rendering::RenderContextC &render_context,
                                                                      vkb::ShaderSource &&vertex_shader, vkb::ShaderSource &&fragment_shader,
                                                                      vkb::sg::Scene &scene, vkb::sg::Camera &camera, vkb::sg::Camera &shadow_camera_) :
-    vkb::ForwardSubpass(render_context, std::move(vertex_shader), std::move(fragment_shader), scene, camera),
+    vkb::rendering::subpasses::ForwardSubpassC(render_context, std::move(vertex_shader), std::move(fragment_shader), scene, camera),
     shadow_camera(shadow_camera_)
 {
 }
@@ -863,7 +865,7 @@ void AsyncComputeSample::ShadowMapForwardSubpass::draw(vkb::core::CommandBufferC
 
 	auto &render_frame = get_render_context().get_active_frame();
 
-	auto allocation = render_frame.allocate_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(glm::mat4), thread_index);
+	auto allocation = render_frame.allocate_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(glm::mat4), get_thread_index());
 
 	allocation.update(shadow_matrix);
 
@@ -871,7 +873,7 @@ void AsyncComputeSample::ShadowMapForwardSubpass::draw(vkb::core::CommandBufferC
 	command_buffer.bind_buffer(allocation.get_buffer(), allocation.get_offset(), allocation.get_size(), 0, 5, 0);
 	command_buffer.bind_image(*shadow_view, *shadow_sampler, 0, 6, 0);
 
-	vkb::ForwardSubpass::draw(command_buffer);
+	vkb::rendering::subpasses::ForwardSubpassC::draw(command_buffer);
 }
 
 AsyncComputeSample::CompositeSubpass::CompositeSubpass(vkb::rendering::RenderContextC &render_context,

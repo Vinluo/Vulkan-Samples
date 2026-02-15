@@ -1,4 +1,4 @@
-/* Copyright (c) 2019-2025, Arm Limited and Contributors
+/* Copyright (c) 2019-2026, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -258,7 +258,7 @@ CommandBufferUsage::ForwardSubpassSecondary::ForwardSubpassSecondary(vkb::render
                                                                      vkb::ShaderSource             &&fragment_shader,
                                                                      vkb::sg::Scene                 &scene_,
                                                                      vkb::sg::Camera                &camera) :
-    vkb::ForwardSubpass{render_context, std::move(vertex_shader), std::move(fragment_shader), scene_, camera}
+    vkb::rendering::subpasses::ForwardSubpassC{render_context, std::move(vertex_shader), std::move(fragment_shader), scene_, camera}
 {
 }
 
@@ -340,7 +340,7 @@ void CommandBufferUsage::ForwardSubpassSecondary::draw(vkb::core::CommandBufferC
 	}
 	const auto transparent_submeshes = vkb::to_u32(sorted_transparent_nodes.size());
 
-	allocate_lights<vkb::ForwardLights>(scene.get_components<vkb::sg::Light>(), MAX_FORWARD_LIGHT_COUNT);
+	allocate_lights<vkb::ForwardLights>(get_scene().get_components<vkb::sg::Light>(), MAX_FORWARD_LIGHT_COUNT);
 
 	color_blend_attachment.blend_enable = VK_FALSE;
 	color_blend_state.attachments.resize(get_output_attachments().size());

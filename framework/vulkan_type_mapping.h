@@ -1,5 +1,5 @@
-/* Copyright (c) 2025, Arm Limited and Contributors
- * Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+/* Copyright (c) 2025-2026, Arm Limited and Contributors
+ * Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -243,6 +243,20 @@ struct HPPType<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>
 	using Type = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR;
 };
 
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+template <>
+struct HPPType<VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT>
+{
+	using Type = vk::PhysicalDeviceRayTracingInvocationReorderFeaturesEXT;
+};
+#endif
+
+template <>
+struct HPPType<VkPhysicalDeviceRayTracingInvocationReorderFeaturesNV>
+{
+	using Type = vk::PhysicalDeviceRayTracingInvocationReorderFeaturesNV;
+};
+
 template <>
 struct HPPType<VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR>
 {
@@ -277,6 +291,12 @@ template <>
 struct HPPType<VkPhysicalDeviceTensorFeaturesARM>
 {
 	using Type = vk::PhysicalDeviceTensorFeaturesARM;
+};
+
+template <>
+struct HPPType<VkPhysicalDeviceDataGraphFeaturesARM>
+{
+	using Type = vk::PhysicalDeviceDataGraphFeaturesARM;
 };
 
 template <>
